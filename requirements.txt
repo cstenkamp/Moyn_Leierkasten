@@ -3,7 +3,7 @@ pyserial
 # python-rtmidi
 # midi2audio
 # pyaudio
-
+pyjson
 
 # from anki
 pyqt5==5.14.1
