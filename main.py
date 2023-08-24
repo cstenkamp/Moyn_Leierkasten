@@ -6,21 +6,15 @@ import re
 import threading
 from queue import Queue
 
-from anki.pylib.anki.sound import SoundOrVideoTag
-from anki.qt import aqt
-from anki.qt.aqt.sound import SimpleMplayerSlaveModePlayer
-from anki.qt.aqt.taskman import TaskManager
+from mplayer_util import SimpleMplayerSlaveModePlayer, SoundOrVideoTag
 import json
-from settings import BASE_DIR
+from settings import BASE_DIR, SPEED_FACTOR
 import subprocess
 
 
 # TODO: long button-press switches between nomove = [pause, veeeryslow, 1xspeed]
 # TODO: das mit dem moving average arduino-seitig besser machen (see jakobs messages)
 # TODO: der arm braucht mehr drehwiederstand
-# TODO: die sensibilität einstellen können - dass der nen bisschen disktretisiert bzw ne abschwächende kurve über
-#        die tatsächliche drehgeschwindigkeit liegt sodass nicht nur exakt 20RPM 1x speed sind und 30RPM schon 1.5x...
-#        -> letztlich einfach nur: "doppelt so schnell drehen heißt NICHT doppelt so schnell abspielen, sondern nen faktor."
 
 def execute(cmd, **kwargs):
     popen = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, **kwargs)
@@ -96,10 +90,10 @@ class Leierkasten():
         if must_pause:
             self.player.toggle_pause()
             self.is_pausing = not self.is_pausing
-            print(f"toggled pause - is now {self.is_pausing}")
+            # print(f"toggled pause - is now {self.is_pausing}")
             # self.play(self.song_index)
             newcommand = cmd.replace("play", "loadfile")+" 0"
-            print(f"now executing {newcommand}")
+            # print(f"now executing {newcommand}")
             self.player.command(newcommand)
             self.is_pausing = False
         else:
@@ -181,7 +175,15 @@ class Leierkasten():
                     errored = False
                     for _ in range(5):
                         try:
-                            self.player.command(f"speed_set {current_rpm / self.rpm_for_1}")
+                            rpm_factor = current_rpm / self.rpm_for_1
+                            if rpm_factor == 0:
+                                speed = 0
+                            elif rpm_factor > 1:
+                                speed = abs(1 - rpm_factor) * SPEED_FACTOR + 1
+                            else:
+                                speed = 1 - (abs(1 - rpm_factor) * SPEED_FACTOR)
+                            # print(f"rpm_factor: {rpm_factor}, speed: {speed}")
+                            self.player.command(f"speed_set {speed}")
                         except BrokenPipeError as e:
                             sleep(0.01)
                             errored = True
@@ -225,9 +227,7 @@ class Leierkasten():
 
 
 def setup_player(base_dir):
-    taskman = TaskManager(None)
-    aqt.sound.setup_audio(taskman, base_dir, base_dir)
-    return SimpleMplayerSlaveModePlayer(taskman, base_dir)
+    return SimpleMplayerSlaveModePlayer(None, base_dir)
 
 
 
