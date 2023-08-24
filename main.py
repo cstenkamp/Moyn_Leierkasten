@@ -6,7 +6,7 @@ import re
 import threading
 from queue import Queue
 
-from mplayer_util import SimpleMplayerSlaveModePlayer, SoundOrVideoTag
+from mplayer_util import SimpleMplayerSlaveModePlayer
 import json
 from settings import BASE_DIR, SPEED_FACTOR
 import subprocess
@@ -28,7 +28,9 @@ def execute(cmd, **kwargs):
 def crawl_songs(base_dir):
     return (" ".join(line for line in execute(["ls", "-m", base_dir])).split(", "))
 
-
+class SoundOrVideoTag():
+    def __init__(self, filename):
+        self.filename = filename
 
 def main():
     # with open("songs.json", "r") as rfile:
@@ -121,7 +123,8 @@ class Leierkasten():
         last_rpm_update_time = time()
         while self.kill_queue.empty():
             try:
-                if (line := self.ser.readline()):
+                line = self.ser.readline()
+                if line:
                     try:
                         serial_data = line.decode("UTF-8").strip()  # Read serial data
                     except UnicodeDecodeError:
@@ -136,10 +139,9 @@ class Leierkasten():
                             print(f"RPM ({rpm_match.group(1)} ms interval): {rpm}")
                             self.rpm_queue.put(rpm)  # Put RPM in the queue
                             last_rpm_update_time = current_time
-                    elif (buttonpress_match := re.search(r'button1_pressed', serial_data)):
-                        # print("BUTTONPRESS")
+                    elif re.search(r'button1_pressed', serial_data):
                         pass
-                    elif (buttonrelease := re.search(r'button1_released', serial_data)):
+                    elif re.search(r'button1_released', serial_data):
                         self.next_song()
                 sleep(0.05)  # Sleep for 50 ms to avoid busy waiting
             except Exception as e:

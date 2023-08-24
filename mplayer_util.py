@@ -1,8 +1,6 @@
 # Copyright: Ankitects Pty Ltd and contributors
 # License: GNU AGPL, version 3 or later; http://www.gnu.org/licenses/agpl.html
 
-from __future__ import annotations
-
 import os
 import sys
 import subprocess
@@ -19,7 +17,7 @@ OnDoneCallback = Callable[[], None]
 
 
 
-def startup_info() -> Any:
+def startup_info():
     "Use subprocess.Popen(startupinfo=...) to avoid opening a console window."
     if sys.platform != "win32":
         return None
@@ -27,52 +25,24 @@ def startup_info() -> Any:
     si.dwFlags |= subprocess.STARTF_USESHOWWINDOW  # pytype: disable=module-attr
     return si
 
-@dataclass
-class TTSTag:
-    """Records information about a text to speech tag.
-
-    See tts.py for more information.
-    """
-
-    field_text: str
-    lang: str
-    voices: list[str]
-    speed: float
-    # each arg should be in the form 'foo=bar'
-    other_args: list[str]
-
-
-@dataclass
-class SoundOrVideoTag:
-    """Contains the filename inside a [sound:...] tag.
-
-    Video files also use [sound:...].
-    """
-
-    filename: str
-
-
-# note this does not include image tags, which are handled with HTML.
-AVTag = Union[SoundOrVideoTag, TTSTag]
-
 
 class _MediaFileFilterFilter:
     """Allows manipulating the file path that media will be read from"""
 
-    _hooks: list[Callable[["str"], str]] = []
+    _hooks = []
 
-    def append(self, callback: Callable[["str"], str]) -> None:
+    def append(self, callback):
         """(txt: str)"""
         self._hooks.append(callback)
 
-    def remove(self, callback: Callable[["str"], str]) -> None:
+    def remove(self, callback):
         if callback in self._hooks:
             self._hooks.remove(callback)
 
-    def count(self) -> int:
+    def count(self):
         return len(self._hooks)
 
-    def __call__(self, txt: str) -> str:
+    def __call__(self, txt):
         for filter in self._hooks:
             try:
                 txt = filter(txt)
@@ -87,7 +57,7 @@ media_file_filter = _MediaFileFilterFilter()
 
 class Player(ABC):
     @abstractmethod
-    def play(self, tag: AVTag, on_done: OnDoneCallback) -> None:
+    def play(self, tag, on_done):
         """Play a file.
 
         When reimplementing, make sure to call
@@ -95,18 +65,18 @@ class Player(ABC):
         on the main thread after playback begins.
         """
 
-    def stop(self) -> None:
+    def stop(self):
         """Optional.
 
         If implemented, the player must not call on_done() when the audio is stopped."""
 
-    def seek_relative(self, secs: int) -> None:
+    def seek_relative(self, secs: int):
         "Jump forward or back by secs. Optional."
 
-    def toggle_pause(self) -> None:
+    def toggle_pause(self):
         "Optional."
 
-    def shutdown(self) -> None:
+    def shutdown(self):
         "Do any cleanup required at program termination. Optional."
 
 
@@ -123,7 +93,7 @@ AUDIO_EXTENSIONS = {
 }
 
 
-def is_audio_file(fname: str) -> bool:
+def is_audio_file(fname):
     ext = fname.split(".")[-1].lower()
     return ext in AUDIO_EXTENSIONS
 
@@ -131,8 +101,8 @@ def is_audio_file(fname: str) -> bool:
 class SoundOrVideoPlayer(Player):  # pylint: disable=abstract-method
     default_rank = 0
 
-    def rank_for_tag(self, tag: AVTag) -> int | None:
-        if isinstance(tag, SoundOrVideoTag):
+    def rank_for_tag(self, tag):
+        if hasattr(tag, "filename"):
             return self.default_rank
         else:
             return None
@@ -141,8 +111,8 @@ class SoundOrVideoPlayer(Player):  # pylint: disable=abstract-method
 class SoundPlayer(Player):  # pylint: disable=abstract-method
     default_rank = 0
 
-    def rank_for_tag(self, tag: AVTag) -> int | None:
-        if isinstance(tag, SoundOrVideoTag) and is_audio_file(tag.filename):
+    def rank_for_tag(self, tag):
+        if hasattr(tag, "filename") and is_audio_file(tag.filename):
             return self.default_rank
         else:
             return None
@@ -154,7 +124,7 @@ class SoundPlayer(Player):  # pylint: disable=abstract-method
 
 # return modified command array that points to bundled command, and return
 # required environment
-def _packagedCmd(cmd: list[str]) -> tuple[Any, dict[str, str]]:
+def _packagedCmd(cmd):
     cmd = cmd[:]
     env = os.environ.copy()
     if "LD_LIBRARY_PATH" in env:
@@ -180,7 +150,7 @@ si = startup_info()
 
 
 # osx throws interrupted system call errors frequently
-def retryWait(proc: subprocess.Popen) -> int:
+def retryWait(proc: subprocess.Popen):
     while 1:
         try:
             return proc.wait()
@@ -195,17 +165,17 @@ def retryWait(proc: subprocess.Popen) -> int:
 class SimpleProcessPlayer(Player):  # pylint: disable=abstract-method
     "A player that invokes a new process for each tag to play."
 
-    args: list[str] = []
-    env: dict[str, str] | None = None
+    args = []
+    env = None
 
-    def __init__(self, taskman, media_folder: str | None = None) -> None:
+    def __init__(self, taskman, media_folder = None):
         self._taskman = taskman
         self._media_folder = media_folder
         self._terminate_flag = False
-        self._process: subprocess.Popen | None = None
+        self._process = None
         self._warned_about_missing_player = False
 
-    def play(self, tag: AVTag, on_done: OnDoneCallback = None) -> None:
+    def play(self, tag, on_done: OnDoneCallback = None):
         if on_done is None:
             on_done = lambda: print("song ended.")
         self._terminate_flag = False
@@ -214,12 +184,12 @@ class SimpleProcessPlayer(Player):  # pylint: disable=abstract-method
         # )
         self._play(tag)
 
-    def stop(self) -> None:
+    def stop(self):
         self._terminate_flag = True
 
     # note: mplayer implementation overrides this
-    def _play(self, tag: AVTag) -> None:
-        assert isinstance(tag, SoundOrVideoTag)
+    def _play(self, tag):
+        assert hasattr(tag, "filename")
         self._process = subprocess.Popen(
             self.args + [tag.filename],
             env=self.env,
@@ -229,7 +199,7 @@ class SimpleProcessPlayer(Player):  # pylint: disable=abstract-method
         )
         self._wait_for_termination(tag)
 
-    def _wait_for_termination(self, tag: AVTag) -> None:
+    def _wait_for_termination(self, tag):
         # self._taskman.run_on_main(
         #     lambda: gui_hooks.av_player_did_begin_playing(self, tag)
         # )
@@ -263,7 +233,7 @@ class SimpleProcessPlayer(Player):  # pylint: disable=abstract-method
                 # process still running, repeat loop
                 pass
 
-    def _on_done(self, ret: Future, cb: OnDoneCallback) -> None:
+    def _on_done(self, ret, cb):
         try:
             ret.result()
         except FileNotFoundError:
@@ -288,7 +258,7 @@ class SimpleMplayerPlayer(SimpleProcessPlayer, SoundOrVideoPlayer):
 
 
 class SimpleMplayerSlaveModePlayer(SimpleMplayerPlayer):
-    def __init__(self, taskman, media_folder: str) -> None:
+    def __init__(self, taskman, media_folder: str):
         self.media_folder = media_folder
         super().__init__(taskman, media_folder)
         self.args.append("-slave")
@@ -317,8 +287,8 @@ class SimpleMplayerSlaveModePlayer(SimpleMplayerPlayer):
 
 
 
-    def _play(self, tag: AVTag) -> None:
-        # assert isinstance(tag, SoundOrVideoTag)
+    def _play(self, tag):
+        assert hasattr(tag, "filename")
 
         filename = media_file_filter(tag.filename)
 
@@ -333,7 +303,7 @@ class SimpleMplayerSlaveModePlayer(SimpleMplayerPlayer):
         )
         # self._wait_for_termination(tag)
 
-    def command(self, *args: Any, poll_outerr = False) -> Collection[str]:
+    def command(self, *args: Any, poll_outerr = False):
         """Send a command over the slave interface.
 
         The trailing newline is automatically added."""
@@ -341,22 +311,11 @@ class SimpleMplayerSlaveModePlayer(SimpleMplayerPlayer):
         if self._process:
             self._process.stdin.write(" ".join(str_args).encode("utf8") + b"\n")
             self._process.stdin.flush()
-            # if poll_outerr:
-            #     if not self._process:
-            #         print("hä")
-            #         return "", ""
-            #     print("polling self._process")
-            #     res = self._poll_stdfile(self._process.stdout), self._poll_stdfile(self._process.stderr)
-            #     print("polling self._process done")
-            #     return res
         return "", ""
 
-    def seek_relative(self, secs: int) -> None:
+    def seek_relative(self, secs: int):
         self.command("seek", secs, 0)
 
-    def toggle_pause(self) -> None:
+    def toggle_pause(self):
         self.command("pause")
 
-
-# MP3 transcoding
-##########################################################################

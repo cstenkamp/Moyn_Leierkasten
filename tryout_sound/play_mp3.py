@@ -100,7 +100,7 @@ class SimpleMplayerSlaveModePlayer(SimpleMplayerPlayer):
                 # process still running, repeat loop
                 pass
 
-    def _on_done(self, ret: Future, cb: OnDoneCallback) -> None:
+    def _on_done(self, ret, cb):
         try:
             ret.result()
         except FileNotFoundError:
