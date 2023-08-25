@@ -175,11 +175,13 @@ class SimpleProcessPlayer(Player):  # pylint: disable=abstract-method
         self._terminate_flag = False
         self._process = None
         self._warned_about_missing_player = False
+        self.current_tag = None
 
     def play(self, tag, on_done: OnDoneCallback = None):
         if on_done is None:
             on_done = lambda: print("song ended.")
         self._terminate_flag = False
+        self.current_tag = tag
         # self._taskman.run_in_background(
         #     lambda: self._play(tag), lambda res: self._on_done(res, on_done)
         # )
@@ -261,6 +263,7 @@ class SimpleMplayerPlayer(SimpleProcessPlayer, SoundOrVideoPlayer):
 class SimpleMplayerSlaveModePlayer(SimpleMplayerPlayer):
     def __init__(self, taskman, media_folder: str):
         self.media_folder = media_folder
+        self.current_tag = None
         super().__init__(taskman, media_folder)
         self.args.append("-slave")
 
@@ -290,6 +293,7 @@ class SimpleMplayerSlaveModePlayer(SimpleMplayerPlayer):
 
     def _play(self, tag):
         assert hasattr(tag, "filename")
+        self.current_tag = tag
 
         filename = media_file_filter(tag.filename)
 
@@ -304,18 +308,18 @@ class SimpleMplayerSlaveModePlayer(SimpleMplayerPlayer):
         )
         # self._wait_for_termination(tag)
 
-    def command(self, *args: Any, poll_outerr = False):
+    def _command(self, *args: Any, poll_outerr = False):
         """Send a command over the slave interface.
 
         The trailing newline is automatically added."""
         str_args = [str(x) for x in args]
         if self._process:
-            for trial in range(5):
+            for trial in range(1000):
                 try:
                     self._process.stdin.write(" ".join(str_args).encode("utf8") + b"\n")
                     self._process.stdin.flush()
                 except BrokenPipeError as e:
-                    if trial < 5:
+                    if trial < 3:
                         print(f"BrokenPipeError #{trial}! Waiting..")
                         time.sleep(0.5)
                     else:
@@ -324,6 +328,26 @@ class SimpleMplayerSlaveModePlayer(SimpleMplayerPlayer):
                     break
 
         return "", ""
+
+    def command(self, *args: Any, poll_outerr = False, ignore_exc=False):
+        """ignore_exc: I have the brokenpipeexception when trying to play a new song when there is no song playing.
+        While in that case it's relevant, it's not relevant for the speed_set command, there it should just nothing happen"""
+        try:
+            self._command(*args, poll_outerr=poll_outerr)
+        except BrokenPipeError as e:
+            if ignore_exc:
+                print("Ignoring the BrokenPipeErrors. (probably because its speed_set command")
+                return
+            # print(f"Many BrokenPipeErrors. re-playing current one and re-executing - for command: {args}")
+            print(f"Many BrokenPie")
+            try:
+                self.play(self.current_tag)
+            except AttributeError as e:
+                print("No current song to play, ignoring exception.")
+                # AttributeError: 'SimpleMplayerSlaveModePlayer' object has no attribute 'current_tag'
+                # should be the case for speed_set
+            else:
+                self._command(*args, poll_outerr=poll_outerr)
 
     def seek_relative(self, secs: int):
         self.command("seek", secs, 0)

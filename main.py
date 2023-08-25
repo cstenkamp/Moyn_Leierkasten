@@ -105,8 +105,11 @@ class Leierkasten():
             # print(f"now executing {newcommand}")
             try:
                 self.player.command(newcommand)
-            except BrokenPipeError:
+            except BrokenPipeError as e:
+                print("killing..")
                 self.kill_queue.put("kill")
+                sleep(5)
+                raise e
             self.is_pausing = False
         else:
             self.play(self.song_index)
@@ -193,7 +196,7 @@ class Leierkasten():
 
                 if not self.is_pausing:
                     errored = False
-                    for outside_trial in range(5):
+                    for outside_trial in range(1000):
                         try:
                             rpm_factor = current_rpm / self.rpm_for_1
                             if rpm_factor == 0:
@@ -203,13 +206,16 @@ class Leierkasten():
                             else:
                                 speed = 1 - (abs(1 - rpm_factor) * SPEED_FACTOR)
                             # print(f"rpm_factor: {rpm_factor}, speed: {speed}")
-                            self.player.command(f"speed_set {speed}")
+                            self.player.command(f"speed_set {speed}", ignore_exc=False)
                         except BrokenPipeError as e:
-                            if outside_trial < 3:
+                            if outside_trial < 2:
                                 sleep(0.1)
                                 errored = True
                             else:
+                                print("Outside (playback-thread) died too often!")
                                 self.kill_queue.put("kill")
+                                sleep(10)
+                                break
                         else:
                             if errored:
                                 print("Escaped error")
