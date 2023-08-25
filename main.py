@@ -104,7 +104,9 @@ class Leierkasten():
             newcommand = cmd.replace("play", "loadfile")+" 0"
             # print(f"now executing {newcommand}")
             try:
-                self.player.command(newcommand)
+                res = self.player.command(newcommand)
+                if res:
+                    self.mplayerout_queue.put("ended")
             except BrokenPipeError as e:
                 print("killing..")
                 self.kill_queue.put("kill")
@@ -206,7 +208,9 @@ class Leierkasten():
                             else:
                                 speed = 1 - (abs(1 - rpm_factor) * SPEED_FACTOR)
                             # print(f"rpm_factor: {rpm_factor}, speed: {speed}")
-                            self.player.command(f"speed_set {speed}", ignore_exc=False)
+                            res = self.player.command(f"speed_set {speed}", ignore_exc=False)
+                            if res:
+                                self.mplayerout_queue.put("ended")
                         except BrokenPipeError as e:
                             if outside_trial < 2:
                                 sleep(0.1)

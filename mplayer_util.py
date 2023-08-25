@@ -338,8 +338,8 @@ class SimpleMplayerSlaveModePlayer(SimpleMplayerPlayer):
             if ignore_exc:
                 print("Ignoring the BrokenPipeErrors. (probably because its speed_set command")
                 return
-            # print(f"Many BrokenPipeErrors. re-playing current one and re-executing - for command: {args}")
-            print(f"Many BrokenPie")
+            print(f"Many BrokenPipeErrors. re-playing current one and re-executing - for command: {args}")
+            # print(f"Many BrokenPie")
             try:
                 self.play(self.current_tag)
             except AttributeError as e:
@@ -347,7 +347,9 @@ class SimpleMplayerSlaveModePlayer(SimpleMplayerPlayer):
                 # AttributeError: 'SimpleMplayerSlaveModePlayer' object has no attribute 'current_tag'
                 # should be the case for speed_set
             else:
+                print("No exception on play, will assume song ended howver.")
                 self._command(*args, poll_outerr=poll_outerr)
+                return True
 
     def seek_relative(self, secs: int):
         self.command("seek", secs, 0)
