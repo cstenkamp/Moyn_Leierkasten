@@ -5,12 +5,12 @@ import serial
 import re
 import threading
 from queue import Queue
+from serial.serialutil import SerialException
 
 from mplayer_util import SimpleMplayerSlaveModePlayer
 import json
 from settings import BASE_DIR, SPEED_FACTOR
 import subprocess
-
 
 # TODO: long button-press switches between nomove = [pause, veeeryslow, 1xspeed]
 # TODO: das mit dem moving average arduino-seitig besser machen (see jakobs messages)
@@ -26,6 +26,7 @@ def execute(cmd, **kwargs):
         raise subprocess.CalledProcessError(return_code, cmd)
     
 def crawl_songs(base_dir):
+    # TODO: assert dass in den filenames keine kommas sind geez
     return (" ".join(line for line in execute(["ls", "-m", base_dir])).split(", "))
 
 class SoundOrVideoTag():
@@ -35,11 +36,17 @@ class SoundOrVideoTag():
 def main():
     # with open("songs.json", "r") as rfile:
     #     songs = json.load(rfile)
-    songs = crawl_songs(BASE_DIR)
-    print(songs)
-    kasten = Leierkasten(BASE_DIR, songs)
-    kasten.play()
-    kasten.run()
+    while True:
+        try:
+            songs = crawl_songs(BASE_DIR)
+            print(songs)
+            kasten = Leierkasten(BASE_DIR, songs)
+            kasten.play()
+            kasten.run()
+        except Exception as e:
+            print("died!")
+            print(e, file=sys.stderr)
+            sleep(5)
 
 def done_callback():
     print("DONE!!!")
@@ -84,9 +91,9 @@ class Leierkasten():
         print(f"Next song: {song.filename}")
         with (self.lock if not no_lock else NullContextManager()):
             if must_pause:
-                self.cmd_queue.put(("pause", f"play \"{os.path.join(self.base_dir, song.filename)}\"")) # self.player.toggle_pause(), # self.player.command(f"loadfile {song.filename}"), ...
+                self.cmd_queue.put(("pause", f"play \"{os.path.join(self.base_dir, song.filename)}\""))
             else:
-                self.cmd_queue.put(f"play \"{os.path.join(self.base_dir, song.filename)}\"") # self.player.toggle_pause(), # self.player.command(f"loadfile {song.filename}"), ...
+                self.cmd_queue.put(f"play \"{os.path.join(self.base_dir, song.filename)}\"")
 
     def _nextsong_mainthread(self, cmd, must_pause=False):
         if must_pause:
@@ -96,7 +103,10 @@ class Leierkasten():
             # self.play(self.song_index)
             newcommand = cmd.replace("play", "loadfile")+" 0"
             # print(f"now executing {newcommand}")
-            self.player.command(newcommand)
+            try:
+                self.player.command(newcommand)
+            except BrokenPipeError:
+                self.kill_queue.put("kill")
             self.is_pausing = False
         else:
             self.play(self.song_index)
@@ -123,7 +133,15 @@ class Leierkasten():
         last_rpm_update_time = time()
         while self.kill_queue.empty():
             try:
-                line = self.ser.readline()
+                for trial in range(5):
+                    try:
+                        line = self.ser.readline()
+                    except SerialException:
+                        print(f"SerialException #{trial}! Waiting..")
+                        sleep(0.5)
+                    else:
+                        break
+
                 if line:
                     try:
                         serial_data = line.decode("UTF-8").strip()  # Read serial data
@@ -175,7 +193,7 @@ class Leierkasten():
 
                 if not self.is_pausing:
                     errored = False
-                    for _ in range(5):
+                    for outside_trial in range(5):
                         try:
                             rpm_factor = current_rpm / self.rpm_for_1
                             if rpm_factor == 0:
@@ -187,8 +205,11 @@ class Leierkasten():
                             # print(f"rpm_factor: {rpm_factor}, speed: {speed}")
                             self.player.command(f"speed_set {speed}")
                         except BrokenPipeError as e:
-                            sleep(0.01)
-                            errored = True
+                            if outside_trial < 3:
+                                sleep(0.1)
+                                errored = True
+                            else:
+                                self.kill_queue.put("kill")
                         else:
                             if errored:
                                 print("Escaped error")
@@ -224,6 +245,15 @@ class Leierkasten():
             playback_thread.join()
         except KeyboardInterrupt:
             print("KILLED - Closing Serial!")
+            self.ser.close()
+            self.kill_queue.put("kill")
+        except Exception as e:
+            print("EXCEPTION - Closing Serial!")
+            self.ser.close()
+            self.kill_queue.put("kill")
+            raise e
+        else:
+            print("ENDING")
             self.ser.close()
             self.kill_queue.put("kill")
 

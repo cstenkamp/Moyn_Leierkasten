@@ -7,6 +7,7 @@ import subprocess
 from abc import ABC, abstractmethod
 from concurrent.futures import Future
 from dataclasses import dataclass
+import time
 from pathlib import Path
 from typing import Any, Collection, Callable, Union
 
@@ -309,8 +310,19 @@ class SimpleMplayerSlaveModePlayer(SimpleMplayerPlayer):
         The trailing newline is automatically added."""
         str_args = [str(x) for x in args]
         if self._process:
-            self._process.stdin.write(" ".join(str_args).encode("utf8") + b"\n")
-            self._process.stdin.flush()
+            for trial in range(5):
+                try:
+                    self._process.stdin.write(" ".join(str_args).encode("utf8") + b"\n")
+                    self._process.stdin.flush()
+                except BrokenPipeError as e:
+                    if trial < 5:
+                        print(f"BrokenPipeError #{trial}! Waiting..")
+                        time.sleep(0.5)
+                    else:
+                        raise e
+                else:
+                    break
+
         return "", ""
 
     def seek_relative(self, secs: int):
