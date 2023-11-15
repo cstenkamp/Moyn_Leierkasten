@@ -1,6 +1,4 @@
 # stolen from Ankitects/Anki's sound.py:
-from concurrent.futures import Future
-from dataclasses import dataclass
 # https://raw.githubusercontent.com/ankitects/anki/484377b8091179504b21b29be1de6925c70af4bd/qt/aqt/sound.py
 # original license:
 # Copyright: Ankitects Pty Ltd and contributors
