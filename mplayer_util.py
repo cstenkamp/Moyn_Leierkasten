@@ -1,3 +1,8 @@
+# stolen from Ankitects/Anki's sound.py:
+from concurrent.futures import Future
+from dataclasses import dataclass
+# https://raw.githubusercontent.com/ankitects/anki/484377b8091179504b21b29be1de6925c70af4bd/qt/aqt/sound.py
+# original license:
 # Copyright: Ankitects Pty Ltd and contributors
 # License: GNU AGPL, version 3 or later; http://www.gnu.org/licenses/agpl.html
 
@@ -5,11 +10,9 @@ import os
 import sys
 import subprocess
 from abc import ABC, abstractmethod
-from concurrent.futures import Future
-from dataclasses import dataclass
 import time
 from pathlib import Path
-from typing import Any, Collection, Callable, Union
+from typing import Any, Callable
 
 
 is_win = is_mac = False
